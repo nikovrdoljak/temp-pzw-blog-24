@@ -6,3 +6,4 @@ s03
 s04
 s05
 s06 s tagom nakon commita
+s07 testiram fetch
