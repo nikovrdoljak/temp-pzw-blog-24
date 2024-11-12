@@ -10,6 +10,7 @@ from flask_wtf.file import FileAllowed
 from datetime import datetime
 from pymongo import MongoClient
 from bson.objectid import ObjectId
+import gridfs
 
 app = Flask(__name__)
 app.secret_key = 'tajni_ključ'
@@ -17,7 +18,7 @@ bootstrap = Bootstrap5(app)
 client = MongoClient('mongodb://localhost:27017/')
 db = client['temp_pzw_blog_database']
 posts_collection = db['posts']
-
+fs = gridfs.GridFS(db)
 
 class NameForm(FlaskForm):
     name = StringField("Ime", validators=[DataRequired()])
@@ -43,6 +44,7 @@ def index():
 def post_create():
     form = BlogPostForm()
     if form.validate_on_submit():
+        image_id = save_image_to_gridfs(request, fs)
         post = {
             'title': form.title.data,
             'content': form.content.data,
@@ -50,6 +52,7 @@ def post_create():
             'status': form.status.data,
             'date': datetime.combine(form.date.data, datetime.min.time()),
             'tags': form.tags.data,
+            'image_id': image_id,
             'date_created': datetime.utcnow()
         }
         posts_collection.insert_one(post)
@@ -93,6 +96,16 @@ def post_edit(post_id):
                 'date_updated': datetime.utcnow()
             }}
         )
+
+        image_id = save_image_to_gridfs(request, fs)
+        if image_id != None:
+            posts_collection.update_one(
+            {"_id": ObjectId(post_id)},
+            {"$set": {
+                'image_id': image_id,
+            }}
+        )
+
         flash('Post je uspješno ažuriran.', 'success')
         return redirect(url_for('post_view', post_id = post_id))
     else:
@@ -104,3 +117,20 @@ def delete_post(post_id):
     posts_collection.delete_one({"_id": ObjectId(post_id)})
     flash('Post je uspješno obrisan.', 'success')
     return redirect(url_for('index'))
+
+
+def save_image_to_gridfs(request, fs):
+    if 'image' in request.files:
+        image = request.files['image']
+        if image.filename != '':
+            image_id = fs.put(image, filename=image.filename)
+        else:
+            image_id = None
+    else:
+        image_id = None
+    return image_id
+
+@app.route('/image/<image_id>')
+def serve_image(image_id):
+    image = fs.get(ObjectId(image_id))
+    return image.read(), 200, {'Content-Type': 'image/jpeg'}
