@@ -11,6 +11,7 @@ from datetime import datetime
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 import gridfs
+import markdown
 
 app = Flask(__name__)
 app.secret_key = 'tajni_ključ'
@@ -26,7 +27,7 @@ class NameForm(FlaskForm):
 
 class BlogPostForm(FlaskForm):
     title = StringField('Naslov', validators=[DataRequired(), Length(min=5, max=100)])
-    content = TextAreaField('Sadržaj')
+    content = TextAreaField('Sadržaj', render_kw={"id": "markdown-editor"})
     author = StringField('Autor', validators=[DataRequired()])
     status = RadioField('Status', choices=[('draft', 'Skica'), ('published', 'Objavljeno')], default='draft')
     date = DateField('Datum', default=datetime.today)
@@ -134,3 +135,7 @@ def save_image_to_gridfs(request, fs):
 def serve_image(image_id):
     image = fs.get(ObjectId(image_id))
     return image.read(), 200, {'Content-Type': 'image/jpeg'}
+
+@app.template_filter('markdown')
+def markdown_filter(text):
+    return markdown.markdown(text)

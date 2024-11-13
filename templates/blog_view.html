@@ -16,7 +16,7 @@
         <p class="mt-2">{% for tag in post.tags.split(',') %}
             <span class="badge bg-primary">{{ tag }}</span>
         {% endfor %}</p>
-        <p class="mt-5">{{post.content }}</p>
+        <p class="mt-5">{{ post.content | markdown | safe }}</p>
         <div>
             <a href="{{ url_for('post_edit', post_id=post['_id']) }}" type="button" class="btn btn-primary btn-sm">Uredi</a>
             <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteModal"
