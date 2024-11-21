@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from flask_bootstrap import Bootstrap5
 from datetime import datetime
-from forms import BlogPostForm, LoginForm, RegisterForm
+from forms import BlogPostForm, LoginForm, RegisterForm, ProfileForm
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 import gridfs
@@ -83,7 +83,7 @@ def post_create():
         post = {
             'title': form.title.data,
             'content': form.content.data,
-            'author': form.author.data,
+            'author': current_user.get_id(),
             'status': form.status.data,
             'date': datetime.combine(form.date.data, datetime.min.time()),
             'tags': form.tags.data,
@@ -114,7 +114,7 @@ def post_edit(post_id):
     if request.method == 'GET':
         form.title.data = post['title']
         form.content.data = post['content']
-        form.author.data = post['author']
+        # form.author.data = post['author']
         form.date.data = post['date']
         form.tags.data = post['tags']
         form.status.data = post['status']
@@ -270,3 +270,64 @@ def confirm_email(token):
         flash('Vaš račun je potvrđen. Hvala! Molimo prijavite se.', 'success')
     
     return redirect(url_for('login'))
+
+
+@app.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    form = ProfileForm(obj=current_user)
+
+    user_data = users_collection.find_one({"email": current_user.get_id()})
+    if request.method == 'GET':
+        form.first_name.data = user_data["first_name"]
+        form.last_name.data = user_data["last_name"]
+        form.bio.data = user_data["bio"]
+    elif form.validate_on_submit():
+        current_user.first_name = form.first_name.data
+        current_user.last_name = form.last_name.data
+        current_user.bio = form.bio.data
+
+        db.users.update_one(
+        {"email": current_user.get_id()},
+        {"$set": {
+            "first_name": current_user.first_name,
+            "last_name": current_user.last_name,
+            "bio": current_user.bio
+        }}
+        )
+        if form.image.data:
+            # Pobrišimo postojeću ako postoji
+            if hasattr(user_data, 'image_id') and user_data.image_id:
+                fs.delete(current_user.profile_photo_id)
+            
+            image_id = save_image_to_gridfs(request, fs)
+            if image_id != None:
+                users_collection.update_one(
+                {"email": current_user.get_id()},
+                {"$set": {
+                    'image_id': image_id,
+                }}
+            )
+
+        
+        flash('Vaši podaci su uspješno spremljeni!', 'success')
+        return redirect(url_for('profile'))
+
+    return render_template('profile.html', form=form, image_id=user_data["image_id"])
+
+@app.route("/myposts")
+def my_posts():
+    posts = posts_collection.find({"author": current_user.get_id()}).sort("date", -1)
+    return render_template('my_posts.html', posts = posts)
+
+
+def localize_status(status):
+    translations = {
+        "draft": "Skica",
+        "published": "Objavljeno"
+    }
+    # Vrati prevedeni ili originalni ako nije pronađen
+    return translations.get(status, status)
+
+# Registirajmo filter za Jinja-u
+app.jinja_env.filters['localize_status'] = localize_status

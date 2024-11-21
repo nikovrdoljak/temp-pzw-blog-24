@@ -7,7 +7,7 @@ from datetime import datetime
 class BlogPostForm(FlaskForm):
     title = StringField('Naslov', validators=[DataRequired(), Length(min=5, max=100)])
     content = TextAreaField('Sadržaj', render_kw={"id": "markdown-editor"})
-    author = StringField('Autor', validators=[DataRequired()])
+    # author = StringField('Autor', validators=[DataRequired()])
     status = RadioField('Status', choices=[('draft', 'Skica'), ('published', 'Objavljeno')], default='draft')
     date = DateField('Datum', default=datetime.today)
     tags = StringField('Oznake', render_kw={"id": "tags"})
@@ -25,3 +25,10 @@ class RegisterForm(FlaskForm):
     password = PasswordField('Zaporka', validators=[DataRequired(), EqualTo('password2', message='Zaporke moraju biti jednake.')])
     password2 = PasswordField('Potvrdi zaporku', validators=[DataRequired()])
     submit = SubmitField('Registracija')
+
+class ProfileForm(FlaskForm):
+    first_name = StringField("Ime", validators=[DataRequired(), Length(max=50)])
+    last_name = StringField("Prezime", validators=[DataRequired(), Length(max=50)])
+    bio = TextAreaField("Biografija", validators=[Length(max=1000)], render_kw={"id": "markdown-editor"})
+    image = FileField('Vaša slika', validators=[FileAllowed(['jpg', 'png', 'jpeg'], 'Samo slike!')])
+    submit = SubmitField("Spremi")
