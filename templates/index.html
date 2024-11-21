@@ -9,6 +9,14 @@
 {% block body %}
 <h1 class="mb-4">Flask-Blog</h1>
 
+<div class="mt-4">
+    <h4>current_user:</h4>
+    <p>is_authenticated: <b>{{current_user.is_authenticated}}</b></p>
+    <p>is_active: <b>{{current_user.is_active}}</b></p>
+    <p>is_anonymous: <b>{{current_user.is_anonymous}}</b></p>
+    <p>get_id(): <b>{{current_user.get_id()}}</b></p>
+</div>
+
 <ul class="col-8 list-unstyled">
     {% for post in posts %}
     <li>

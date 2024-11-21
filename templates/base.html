@@ -23,7 +23,13 @@
 
             <div class="collapse navbar-collapse mt-1" id="navbarNav">
                 <ul class="navbar-nav">
-                    {{ render_nav_item('post_create', 'Novi post', _use_li = True) }}
+                    {{ render_nav_item('post_create', 'Novi članak', _use_li = True) }}
+                    {% if current_user.is_authenticated %}
+                        {{ render_nav_item('logout', 'Odjava', _use_li = True) }}
+                    {% else %}
+                        {{ render_nav_item('login', 'Prijava', _use_li = True) }}
+                        {{ render_nav_item('register', 'Registracija', _use_li = True) }}
+                    {% endif %}
                 </ul>
             </div>
         </nav>
