@@ -18,7 +18,8 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY')
 bootstrap = Bootstrap5(app)
-client = MongoClient('mongodb://localhost:27017/')
+client = MongoClient(os.getenv('MONGODB_CONNECTION_STRING'))
+# client = MongoClient('mongodb://localhost:27017/')
 db = client['temp_pzw_blog_database']
 posts_collection = db['posts']
 users_collection = db['users']
