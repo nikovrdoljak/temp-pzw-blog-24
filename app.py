@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from flask_bootstrap import Bootstrap5
 from datetime import datetime
-from forms import BlogPostForm, LoginForm, RegisterForm, ProfileForm
+from forms import BlogPostForm, LoginForm, RegisterForm, ProfileForm, UserForm
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 import gridfs
@@ -285,52 +285,55 @@ def confirm_email(token):
     
     return redirect(url_for('login'))
 
-
-@app.route('/profile', methods=['GET', 'POST'])
-@login_required
-def profile():
-    is_admin = admin_permission.can()
-    is_author = author_permission.can()
-
-    form = ProfileForm(obj=current_user)
-
-    user_data = users_collection.find_one({"email": current_user.get_id()})
-    if request.method == 'GET':
-        form.first_name.data = user_data["first_name"]
-        form.last_name.data = user_data["last_name"]
-        form.bio.data = user_data["bio"]
-    elif form.validate_on_submit():
-        current_user.first_name = form.first_name.data
-        current_user.last_name = form.last_name.data
-        current_user.bio = form.bio.data
-
+def update_user_data(user_data, form):
+    if form.validate_on_submit():
         db.users.update_one(
-        {"email": current_user.get_id()},
+        {"_id": user_data['_id']},
         {"$set": {
-            "first_name": current_user.first_name,
-            "last_name": current_user.last_name,
-            "bio": current_user.bio
+            "first_name": form.first_name.data,
+            "last_name": form.last_name.data,
+            "bio": form.bio.data
         }}
         )
         if form.image.data:
             # Pobrišimo postojeću ako postoji
             if hasattr(user_data, 'image_id') and user_data.image_id:
-                fs.delete(current_user.profile_photo_id)
+                fs.delete(user_data.image_id)
             
             image_id = save_image_to_gridfs(request, fs)
             if image_id != None:
                 users_collection.update_one(
-                {"email": current_user.get_id()},
+                {"_id": user_data['_id']},
                 {"$set": {
                     'image_id': image_id,
                 }}
             )
+        flash("Podaci uspješno ažurirani!", "success")
+        return True
+    return False
 
-        
-        flash('Vaši podaci su uspješno spremljeni!', 'success')
+
+@app.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    user_data = users_collection.find_one({"email": current_user.get_id()})
+    form = ProfileForm(data=user_data)
+    title = "Vaš profil"
+    if update_user_data(user_data, form):
         return redirect(url_for('profile'))
+    return render_template('profile.html', form=form, image_id=user_data.get("image_id"), title=title)
 
-    return render_template('profile.html', form=form, image_id=user_data["image_id"], is_admin=is_admin, is_author=is_author)
+@app.route('/user/<user_id>', methods=['GET', 'POST'])
+@login_required
+@admin_permission.require(http_exception=403)
+def user_edit(user_id):
+    user_data = users_collection.find_one({"_id": ObjectId(user_id)})
+    form = UserForm(data=user_data)
+    title = "Korisnički profil"
+    if update_user_data(user_data, form):
+        return redirect(url_for('users'))
+    return render_template('profile.html', form=form, image_id=user_data.get("image_id"), title=title)
+
 
 @app.route("/myposts")
 def my_posts():
@@ -370,8 +373,11 @@ def on_identity_loaded(sender, identity):
 @login_required
 @admin_permission.require(http_exception=403)
 def users():
-    return render_template('users.html')
+    users = users_collection.find().sort("email")
+    return render_template('users.html', users = users)
 
 @app.errorhandler(403)
 def access_denied(e):
     return render_template('403.html'), 403
+
+

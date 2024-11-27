@@ -32,3 +32,12 @@ class ProfileForm(FlaskForm):
     bio = TextAreaField("Biografija", validators=[Length(max=1000)], render_kw={"id": "markdown-editor"})
     image = FileField('Vaša slika', validators=[FileAllowed(['jpg', 'png', 'jpeg'], 'Samo slike!')])
     submit = SubmitField("Spremi")
+
+class UserForm(FlaskForm):
+    email = StringField("Email", validators=[DataRequired(), Length(3, 64), Email()])
+    first_name = StringField("Ime", validators=[DataRequired(), Length(max=50)])
+    last_name = StringField("Prezime", validators=[DataRequired(), Length(max=50)])
+    is_confirmed = BooleanField('Potvrđen')
+    bio = TextAreaField("Biografija", validators=[Length(max=1000)], render_kw={"id": "markdown-editor"})
+    image = FileField('Slika', validators=[FileAllowed(['jpg', 'png', 'jpeg'], 'Samo slike!')])
+    submit = SubmitField("Spremi")
