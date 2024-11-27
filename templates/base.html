@@ -37,8 +37,14 @@
                             {{current_user.get_id()}}
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item icon-link" href="{{url_for('profile') }}"><i class="bi bi-person mb-2"></i>Profil</a>
+                            <li>
+                                <a class="dropdown-item icon-link" href="{{url_for('profile') }}"><i class="bi bi-person mb-2"></i>Profil</a>
                             </li>
+                            {% if current_user.is_admin %}
+                            <li>
+                                <a class="dropdown-item icon-link" href="{{url_for('users') }}"><i class="bi bi-people mb-2"></i>Korisnici</a>
+                            </li>
+                            {% endif %}
                             <li>
                                 <hr class="dropdown-divider">
                             </li>

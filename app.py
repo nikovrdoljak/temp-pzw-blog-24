@@ -12,14 +12,15 @@ from itsdangerous import URLSafeTimedSerializer
 from flask_mail import Mail, Message
 from dotenv import load_dotenv
 import os
+from flask_principal import Principal, Permission, RoleNeed, Identity, identity_changed, identity_loaded, UserNeed
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY')
 bootstrap = Bootstrap5(app)
-client = MongoClient(os.getenv('MONGODB_CONNECTION_STRING'))
-# client = MongoClient('mongodb://localhost:27017/')
+# client = MongoClient(os.getenv('MONGODB_CONNECTION_STRING'))
+client = MongoClient('mongodb://localhost:27017/')
 db = client['temp_pzw_blog_database']
 posts_collection = db['posts']
 users_collection = db['users']
@@ -30,6 +31,11 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
+principal = Principal(app)
+admin_permission = Permission(RoleNeed('admin'))
+author_permission = Permission(RoleNeed('author'))
+
+
 app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER')
 app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
 app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True') == 'True'
@@ -38,20 +44,22 @@ app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
 
 
-@login_manager.user_loader
-def load_user(user_id):
-    return User.get(user_id)
+# @login_manager.user_loader
+# def load_user(user_id):
+#     return User.get(user_id)
 
 @login_manager.user_loader
 def load_user(email):
     user_data = users_collection.find_one({"email": email})
     if user_data:
-        return User(user_data['email'])
+        # return User(user_data['email'])
+        return User(user_data['email'], user_data.get('is_admin'))
     return None
 
 class User(UserMixin):
-    def __init__(self, email):
+    def __init__(self, email, admin=False):
         self.id = email
+        self.admin = admin is True
 
     @classmethod
     def get(self_class, id):
@@ -59,7 +67,11 @@ class User(UserMixin):
             return self_class(id)
         except UserNotFoundError:
             return None
-        
+
+    @property
+    def is_admin(self):
+        return self.admin
+
     # @property
     # def is_active(self):
     #     return self.active
@@ -192,6 +204,7 @@ def login():
                 return redirect(url_for('login'))
             user = User(user_data['email'])
             login_user(user, form.remember_me.data)
+            identity_changed.send(app, identity=Identity(user.id))
             next = request.args.get('next')
             if next is None or not next.startswith('/'):
                 next = url_for('index')
@@ -276,6 +289,9 @@ def confirm_email(token):
 @app.route('/profile', methods=['GET', 'POST'])
 @login_required
 def profile():
+    is_admin = admin_permission.can()
+    is_author = author_permission.can()
+
     form = ProfileForm(obj=current_user)
 
     user_data = users_collection.find_one({"email": current_user.get_id()})
@@ -314,7 +330,7 @@ def profile():
         flash('Vaši podaci su uspješno spremljeni!', 'success')
         return redirect(url_for('profile'))
 
-    return render_template('profile.html', form=form, image_id=user_data["image_id"])
+    return render_template('profile.html', form=form, image_id=user_data["image_id"], is_admin=is_admin, is_author=is_author)
 
 @app.route("/myposts")
 def my_posts():
@@ -332,3 +348,30 @@ def localize_status(status):
 
 # Registirajmo filter za Jinja-u
 app.jinja_env.filters['localize_status'] = localize_status
+
+@identity_loaded.connect_via(app)
+def on_identity_loaded(sender, identity):
+    if current_user.is_authenticated:
+        # Set the identity user
+        identity.user = current_user
+
+        # Add UserNeed to identity
+        identity.provides.add(UserNeed(current_user.id))
+
+        # Add RoleNeed based on the user's role
+
+        identity.provides.add(RoleNeed('author'))
+
+        # if hasattr(current_user, 'is_admin'):
+        if current_user.is_admin:
+            identity.provides.add(RoleNeed('admin'))
+
+@app.route('/users', methods=['GET', 'POST'])
+@login_required
+@admin_permission.require(http_exception=403)
+def users():
+    return render_template('users.html')
+
+@app.errorhandler(403)
+def access_denied(e):
+    return render_template('403.html'), 403

@@ -9,6 +9,10 @@
 {% block body %}
 {% from 'bootstrap5/form.html' import render_form %}
 <h2>Ažurirajte svoj profil</h2>
+
+<p>is_admin: {{is_admin}}</p>
+<p>is_author: {{is_author}}</p>
+
 <div class="row">
     <div class="col-6">{{ render_form(form) }}</div>
     <div class="col-6">
