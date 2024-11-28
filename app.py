@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, abort
 from flask_bootstrap import Bootstrap5
 from datetime import datetime
 from forms import BlogPostForm, LoginForm, RegisterForm, ProfileForm, UserForm
@@ -12,18 +12,19 @@ from itsdangerous import URLSafeTimedSerializer
 from flask_mail import Mail, Message
 from dotenv import load_dotenv
 import os
-from flask_principal import Principal, Permission, RoleNeed, Identity, identity_changed, identity_loaded, UserNeed
+from flask_principal import Principal, Permission, RoleNeed, Identity, identity_changed, identity_loaded, UserNeed, Need
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY')
 bootstrap = Bootstrap5(app)
-# client = MongoClient(os.getenv('MONGODB_CONNECTION_STRING'))
-client = MongoClient('mongodb://localhost:27017/')
+client = MongoClient(os.getenv('MONGODB_CONNECTION_STRING'))
+# client = MongoClient('mongodb://localhost:27017/')
 db = client['temp_pzw_blog_database']
 posts_collection = db['posts']
 users_collection = db['users']
+likes_collection = db['likes']
 fs = gridfs.GridFS(db)
 
 
@@ -52,14 +53,14 @@ app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
 def load_user(email):
     user_data = users_collection.find_one({"email": email})
     if user_data:
-        # return User(user_data['email'])
-        return User(user_data['email'], user_data.get('is_admin'))
+        return User(user_data['email'], user_data.get('is_admin'), user_data.get('theme'))
     return None
 
 class User(UserMixin):
-    def __init__(self, email, admin=False):
+    def __init__(self, email, admin=False, theme=''):
         self.id = email
         self.admin = admin is True
+        self.theme = theme
 
     @classmethod
     def get(self_class, id):
@@ -71,6 +72,10 @@ class User(UserMixin):
     @property
     def is_admin(self):
         return self.admin
+    
+    # @property
+    # def theme(self):
+    #     return self.theme
 
     # @property
     # def is_active(self):
@@ -116,11 +121,17 @@ def post_view(post_id):
         flash("Post nije pronađen!", "danger")
         return redirect(url_for('index'))
 
-    return render_template('blog_view.html', post=post)
+    return render_template('blog_view.html', post=post, edit_post_permission=edit_post_permission)
 
 @app.route('/blog/edit/<post_id>', methods=["get", "post"])
 @login_required
 def post_edit(post_id):
+
+    #  Provjera dozvole
+    permission = edit_post_permission(post_id)
+    if not permission.can():
+        abort(403, "Nemate dozvolu za uređivanje ovog posta.")
+
     form = BlogPostForm()
     post = posts_collection.find_one({"_id": ObjectId(post_id)})
 
@@ -163,6 +174,11 @@ def post_edit(post_id):
 @app.route('/blog/delete/<post_id>', methods=['POST'])
 @login_required
 def delete_post(post_id):
+     # Provjera dozvole
+    permission = edit_post_permission(post_id)
+    if not permission.can():
+        abort(403, "Nemate dozvolu za brisanje ovog posta.")
+
     posts_collection.delete_one({"_id": ObjectId(post_id)})
     flash('Post je uspješno obrisan.', 'success')
     return redirect(url_for('index'))
@@ -292,7 +308,8 @@ def update_user_data(user_data, form):
         {"$set": {
             "first_name": form.first_name.data,
             "last_name": form.last_name.data,
-            "bio": form.bio.data
+            "bio": form.bio.data,
+            "theme": form.theme.data
         }}
         )
         if form.image.data:
@@ -361,13 +378,17 @@ def on_identity_loaded(sender, identity):
         # Add UserNeed to identity
         identity.provides.add(UserNeed(current_user.id))
 
-        # Add RoleNeed based on the user's role
-
         identity.provides.add(RoleNeed('author'))
 
-        # if hasattr(current_user, 'is_admin'):
         if current_user.is_admin:
             identity.provides.add(RoleNeed('admin'))
+
+        # Dodajemo EditPostNeed za svaki članak koji je korisnik kreirao
+        user_posts = posts_collection.find({"author": current_user.get_id()})
+        for post in user_posts:
+            post_id = str(post["_id"])
+            need = EditPostNeed(post_id)
+            identity.provides.add(need)
 
 @app.route('/users', methods=['GET', 'POST'])
 @login_required
@@ -378,6 +399,41 @@ def users():
 
 @app.errorhandler(403)
 def access_denied(e):
-    return render_template('403.html'), 403
+    return render_template('403.html', description=e.description), 403
 
 
+# Define a custom need for ownership
+class EditPostNeed(Need):
+    def __new__(cls, post_id):
+        return super(EditPostNeed, cls).__new__(cls, 'edit_post', post_id)
+    
+# class EditPostNeed:
+#     def __init__(self, post_id):
+#         self.method = 'edit_post'
+#         self.value = post_id
+
+# Define a permission for editing a specific post
+def edit_post_permission(post_id):
+    return Permission(EditPostNeed(str(ObjectId(post_id))))
+
+# @app.route('/like/<post_id>', methods=['POST'])
+# @login_required
+# def like_post(post_id):
+#     post = posts_collection.find_one({"_id": ObjectId(post_id)})
+#     user_id = str(current_user.id)
+
+#     existing_like = likes_collection.find_one({"post_id": post_id, "user_id": user_id})
+
+#     if existing_like:
+#         likes_collection.delete_one({"_id": existing_like["_id"]})
+#         liked = False
+#     else:
+#         likes_collection.insert_one({"post_id": post_id, "user_id": user_id})
+#         liked = True
+
+#     likes_count = likes_collection.count_documents({"post_id": post_id})
+
+#     return jsonify({
+#         "likes_count": likes_count,
+#         "liked": liked
+#     })
